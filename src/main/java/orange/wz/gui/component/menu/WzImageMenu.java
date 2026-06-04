@@ -13,6 +13,7 @@ public final class WzImageMenu extends TreeMenu {
         add(btnPaste);
         add(btnDelete);
         add(btnExport);
+        add(btnCheckMapIntegrity);
         add(btnLocalize);
         add(btnImgCompare);
         add(btnImgFinder);

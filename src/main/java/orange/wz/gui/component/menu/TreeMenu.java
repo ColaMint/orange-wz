@@ -36,6 +36,7 @@ public class TreeMenu extends JPopupMenu {
     protected JMenuItem btnChangeIntNodeValue;
     protected JMenuItem btnRawToIcon;
     protected JMenuItem btnChangeCavOrigin;
+    protected JMenuItem btnCheckMapIntegrity;
 
     public TreeMenu(EditPane editPane) {
         super();
@@ -172,5 +173,8 @@ public class TreeMenu extends JPopupMenu {
         JMenuItem addVectorBtn = new JMenuItem(MainFrame.i18n.get("tree.menu.vector"));
         addVectorBtn.addActionListener(e -> editPane.addVector());
         btnSubNodeForList.add(addVectorBtn);
+
+        btnCheckMapIntegrity = new JMenuItem(MainFrame.i18n.get("tree.menu.check_map_integrity"));
+        btnCheckMapIntegrity.addActionListener(e -> editPane.checkMapIntegrity());
     }
 }

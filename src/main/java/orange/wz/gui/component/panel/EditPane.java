@@ -2047,6 +2047,78 @@ public final class EditPane extends JSplitPane {
         }.execute();
     }
 
+    // 地图完整性检查 ---------------------------------------------------------------------------------------------------
+    public void checkMapIntegrity() {
+        TreePath[] selectedPaths = tree.getSelectionPaths();
+        if (TreePathUtil.isNullOrMultiple(selectedPaths)) return;
+
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) selectedPaths[0].getLastPathComponent();
+        WzObject wzObject = (WzObject) node.getUserObject();
+        if (!(wzObject instanceof WzImage mapImg)) return;
+
+        // 向上找到 WzDirectory 根节点
+        WzObject current = mapImg;
+        while (current != null) {
+            if (current instanceof WzDirectory dir && dir.isWzFile()) {
+                break;
+            }
+            current = current.getParent();
+        }
+
+        if (!(current instanceof WzDirectory rootDir)) {
+            JOptionPane.showMessageDialog(MainFrame.getInstance(),
+                    MainFrame.i18n.get("dialog.mapIntegrity.notMap"),
+                    MainFrame.i18n.get("info"), JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // 检查是否在 Map.wz 中
+        String rootName = rootDir.getName().toLowerCase();
+        if (!rootName.contains("map")) {
+            JOptionPane.showMessageDialog(MainFrame.getInstance(),
+                    MainFrame.i18n.get("dialog.mapIntegrity.notMap"),
+                    MainFrame.i18n.get("info"), JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        if (!mapImg.parse()) {
+            log.error(MainFrame.i18n.get("error.parse", mapImg.getName(), "parse failed"));
+            return;
+        }
+
+        new SwingWorker<MapIntegrityChecker.Result, Void>() {
+            @Override
+            protected MapIntegrityChecker.Result doInBackground() {
+                return MapIntegrityChecker.check(mapImg, rootDir);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    MapIntegrityChecker.Result result = get();
+                    if (result.missingPaths().isEmpty()) {
+                        JOptionPane.showMessageDialog(MainFrame.getInstance(),
+                                MainFrame.i18n.get("dialog.mapIntegrity.complete", result.checkedCount()),
+                                MainFrame.i18n.get("info"), JOptionPane.INFORMATION_MESSAGE);
+                    } else {
+                        JTextArea textArea = new JTextArea(
+                                MainFrame.i18n.get("dialog.mapIntegrity.incomplete",
+                                        result.missingPaths().size()) + "\n\n"
+                                        + String.join("\n", result.missingPaths()));
+                        textArea.setEditable(false);
+                        textArea.setCaretPosition(0);
+                        JScrollPane scrollPane = new JScrollPane(textArea);
+                        scrollPane.setPreferredSize(new Dimension(600, 400));
+                        JOptionPane.showMessageDialog(MainFrame.getInstance(), scrollPane,
+                                MainFrame.i18n.get("warn"), JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (Exception ex) {
+                    log.error(ex.getMessage(), ex);
+                }
+            }
+        }.execute();
+    }
+
     // 删除 -------------------------------------------------------------------------------------------------------------
     public void delete() {
         TreePath[] selectedPaths = tree.getSelectionPaths();
