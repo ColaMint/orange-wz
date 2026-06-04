@@ -54,7 +54,8 @@ public final class ExportXmlDialog extends BaseDialog<ExportXmlData> {
         lineSepGroup.add(windowsRadio);
         lineSepGroup.add(linuxRadio);
 
-        String lineSeparator = prefs.get("lineSeparator", "windows");
+        String lineSeparator = prefs.get("lineSeparator",
+                System.lineSeparator().equals("\r\n") ? "windows" : "linux");
         if (lineSeparator.equals("windows")) {
             windowsRadio.setSelected(true);
         } else {

@@ -364,9 +364,9 @@ public class MainFrame extends JFrame {
 
                     String response;
                     try {
-                        response = requestByCurl(urlStr);
-                    } catch (Exception e) {
                         response = requestByHttp(urlStr);
+                    } catch (Exception e) {
+                        response = requestByCurl(urlStr);
                     }
 
                     final Gson gson = new Gson();
@@ -424,7 +424,7 @@ public class MainFrame extends JFrame {
         conn.setRequestMethod("GET");
         conn.setConnectTimeout(5000);
         conn.setReadTimeout(5000);
-        // conn.setRequestProperty("User-Agent", "OrzRepacker/1.0");
+        conn.setRequestProperty("User-Agent", "OrzRepacker/1.0");
 
         if (conn.getResponseCode() != 200) {
             log.warn(i18n.get("error.checkUpdate", conn.getResponseCode()));

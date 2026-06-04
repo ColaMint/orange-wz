@@ -52,7 +52,8 @@ public class WzXmlFile extends WzImage implements WzSavableFile {
 
     @Override
     public boolean save() {
-        String lineSeparator = Preferences.userNodeForPackage(ExportXmlDialog.class).get("lineSeparator", "windows");
+        String lineSeparator = Preferences.userNodeForPackage(ExportXmlDialog.class)
+                .get("lineSeparator", System.lineSeparator().equals("\r\n") ? "windows" : "linux");
         return exportToXml(Path.of(filePath), indent, meType, lineSeparator.equals("linux"));
     }
 }

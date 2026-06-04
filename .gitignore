@@ -38,3 +38,6 @@ build/
 /keys.dat
 /logs/
 config.ini
+libcrypto-3-x64.dll
+
+.DS_Store

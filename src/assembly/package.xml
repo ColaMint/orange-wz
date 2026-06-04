@@ -34,8 +34,10 @@
             <directory>${project.basedir}</directory>
             <outputDirectory>/</outputDirectory>
             <includes>
-                <include>libcrypto-3-x64.dll</include>
+                <include>OrzRepacker.bat</include>
+                <include>OrzRepacker.sh</include>
             </includes>
+            <fileMode>0755</fileMode>
         </fileSet>
     </fileSets>
 </assembly>
