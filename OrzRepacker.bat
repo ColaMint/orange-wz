@@ -1,3 +1,3 @@
 @echo off
 title OrzRepacker
-jre\bin\java -javaagent:OrzRepacker.jar -jar OrzRepacker.jar
+jre\bin\java -jar OrzRepacker.jar
