@@ -18,6 +18,7 @@ public final class WzImageMenu extends TreeMenu {
         add(btnImgCompare);
         add(btnImgFinder);
         add(btnOutlink);
+        add(btnInlink);
         add(btnOrderAndRename);
         add(btnDelChild);
         add(btnChangeCavFmt);

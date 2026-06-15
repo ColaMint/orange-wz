@@ -26,6 +26,7 @@ public class TreeMenu extends JPopupMenu {
     protected JMenuItem btnLocalize;
     protected JMenuItem btnImgCompare;
     protected JMenuItem btnOutlink;
+    protected JMenuItem btnInlink;
     protected JMenuItem btnImgFinder;
     protected JMenuItem btnDelNonCashEqp;
     protected JMenuItem btnOrderAndRename;
@@ -101,6 +102,9 @@ public class TreeMenu extends JPopupMenu {
 
         btnOutlink = new JMenuItem(MainFrame.i18n.get("tree.menu.outlink"));
         btnOutlink.addActionListener(e -> editPane.outlink());
+
+        btnInlink = new JMenuItem(MainFrame.i18n.get("tree.menu.inlink"));
+        btnInlink.addActionListener(e -> editPane.inlink());
 
         btnImgFinder = new JMenuItem(MainFrame.i18n.get("tree.menu.img_finder"));
         btnImgFinder.addActionListener(e -> editPane.imageFinder());

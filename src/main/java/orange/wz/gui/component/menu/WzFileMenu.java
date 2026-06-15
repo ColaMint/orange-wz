@@ -21,6 +21,7 @@ public final class WzFileMenu extends TreeMenu {
         add(btnLocalize);
         add(btnImgCompare);
         add(btnOutlink);
+        add(btnInlink);
     }
 
     public JMenuItem getBtnPaste() {

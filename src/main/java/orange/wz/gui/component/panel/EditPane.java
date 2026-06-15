@@ -2804,6 +2804,57 @@ public final class EditPane extends JSplitPane {
         worker.execute();
     }
 
+    // Inlink ---------------------------------------------------------------------------------------------------------
+    public void inlink() {
+        TreePath[] selectedPaths = tree.getSelectionPaths();
+        if (selectedPaths == null) return;
+
+        List<WzObject> objects = new ArrayList<>();
+        for (TreePath treePath : selectedPaths) {
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) treePath.getLastPathComponent();
+            objects.add((WzObject) node.getUserObject());
+        }
+
+        SwingWorker<Inlink.Result, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Inlink.Result doInBackground() {
+                return Inlink.replace(objects);
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    Inlink.Result result = get();
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(MainFrame.i18n.get("inlink.result.summary",
+                            result.successPaths().size(), result.failedPaths().size())).append("\n\n");
+                    if (!result.successPaths().isEmpty()) {
+                        sb.append(MainFrame.i18n.get("inlink.result.success")).append("\n");
+                        for (String p : result.successPaths()) sb.append("  ").append(p).append("\n");
+                    }
+                    if (!result.failedPaths().isEmpty()) {
+                        sb.append("\n").append(MainFrame.i18n.get("inlink.result.failed")).append("\n");
+                        for (String p : result.failedPaths()) sb.append("  ").append(p).append("\n");
+                    }
+
+                    JTextArea textArea = new JTextArea(sb.toString());
+                    textArea.setEditable(false);
+                    textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+                    JScrollPane scrollPane = new JScrollPane(textArea);
+                    scrollPane.setPreferredSize(new Dimension(700, 450));
+
+                    JOptionPane.showMessageDialog(MainFrame.getInstance(), scrollPane,
+                            MainFrame.i18n.get("tree.menu.inlink"), JOptionPane.INFORMATION_MESSAGE);
+
+                    tree.updateUI();
+                } catch (Exception ex) {
+                    throw new RuntimeException(ex);
+                }
+            }
+        };
+        worker.execute();
+    }
+
     // 创建子节点 --------------------------------------------------------------------------------------------------------
     public void addWzDirectory() {
         TreePath[] selectedPaths = tree.getSelectionPaths();
