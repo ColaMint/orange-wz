@@ -11,6 +11,8 @@ public final class WzValuePropertyMenu extends TreeMenu {
         add(btnCopy);
         add(btnDelete);
         add(btnLocalize);
+        add(btnOutlink);
+        add(btnInlink);
     }
 
     public JMenuItem getBtnDelete() {

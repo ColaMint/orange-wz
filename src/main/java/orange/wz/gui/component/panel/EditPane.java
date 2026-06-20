@@ -969,6 +969,43 @@ public final class EditPane extends JSplitPane {
     }
 
     /**
+     * 按 WzObject.path (以 / 分隔，不含 root) 在当前树中查找对应 TreeNode，无副作用(不展开/不触发 parse)。
+     *
+     * @param path WzObject.getPath() 返回值
+     * @return 命中的 TreeNode;路径上任意一段缺失时返回 null
+     */
+    public DefaultMutableTreeNode findTreeNodeByPath(String path) {
+        if (path == null || path.isEmpty()) return null;
+        String[] parts = path.split("/");
+        DefaultMutableTreeNode node = treeRoot;
+        for (String part : parts) {
+            node = findTreeNodeByName(node, part);
+            if (node == null) return null;
+        }
+        return node;
+    }
+
+    /**
+     * 从指定父节点下移除名为 name 的子 TreeNode (同步 UI)。
+     *
+     * @param parent 父 TreeNode
+     * @param name   要移除的子节点名
+     * @return true 表示找到并移除了
+     */
+    public boolean removeChildTreeNodeByName(DefaultMutableTreeNode parent, String name) {
+        if (parent == null) return false;
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            DefaultMutableTreeNode child = (DefaultMutableTreeNode) parent.getChildAt(i);
+            Object userObj = child.getUserObject();
+            if (userObj instanceof WzObject obj && name.equals(obj.getName())) {
+                removeNodeFromTree(child);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 在当前选中节点的同级节点中：
      * 1. 先从“当前节点之后”找第一个以 prefix 开头的
      * 2. 如果没找到，再从“当前节点之前”找第一个
@@ -2772,7 +2809,6 @@ public final class EditPane extends JSplitPane {
 
     // Outlink ---------------------------------------------------------------------------------------------------------
     public void outlink() {
-        Instant now = Instant.now();
         TreePath[] selectedPaths = tree.getSelectionPaths();
         if (selectedPaths == null) return;
 
@@ -2783,19 +2819,42 @@ public final class EditPane extends JSplitPane {
             objects.add(wzObject);
         }
 
-        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+        SwingWorker<Outlink.Result, Void> worker = new SwingWorker<>() {
             @Override
-            protected Void doInBackground() {
-                Outlink.replace(objects);
-                return null;
+            protected Outlink.Result doInBackground() {
+                return Outlink.replace(objects, treeRoot);
             }
 
             @Override
             protected void done() {
                 try {
-                    get();
-                    Instant end = Instant.now();
-                    MainFrame.getInstance().setStatusText(MainFrame.i18n.get("test.temp0041", Duration.between(now, end).toSeconds()));
+                    Outlink.Result result = get();
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(MainFrame.i18n.get("outlink.result.summary",
+                            result.successPaths().size(), result.failedPaths().size())).append("\n\n");
+                    if (!result.successPaths().isEmpty()) {
+                        sb.append(MainFrame.i18n.get("outlink.result.success")).append("\n");
+                        for (String p : result.successPaths()) sb.append("  ").append(p).append("\n");
+                    }
+                    if (!result.failedPaths().isEmpty()) {
+                        sb.append("\n").append(MainFrame.i18n.get("outlink.result.failed")).append("\n");
+                        for (String p : result.failedPaths()) sb.append("  ").append(p).append("\n");
+                    }
+
+                    JTextArea textArea = new JTextArea(sb.toString());
+                    textArea.setEditable(false);
+                    textArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+                    JScrollPane scrollPane = new JScrollPane(textArea);
+                    scrollPane.setPreferredSize(new Dimension(700, 450));
+
+                    JOptionPane.showMessageDialog(MainFrame.getInstance(), scrollPane,
+                            MainFrame.i18n.get("tree.menu.outlink"), JOptionPane.INFORMATION_MESSAGE);
+
+                    for (String p : result.successPaths()) {
+                        DefaultMutableTreeNode canvasNode = findTreeNodeByPath(p);
+                        removeChildTreeNodeByName(canvasNode, "_outlink");
+                    }
+                    tree.updateUI();
                 } catch (Exception ex) {
                     throw new RuntimeException(ex);
                 }
@@ -2846,6 +2905,10 @@ public final class EditPane extends JSplitPane {
                     JOptionPane.showMessageDialog(MainFrame.getInstance(), scrollPane,
                             MainFrame.i18n.get("tree.menu.inlink"), JOptionPane.INFORMATION_MESSAGE);
 
+                    for (String p : result.successPaths()) {
+                        DefaultMutableTreeNode canvasNode = findTreeNodeByPath(p);
+                        removeChildTreeNodeByName(canvasNode, "_inlink");
+                    }
                     tree.updateUI();
                 } catch (Exception ex) {
                     throw new RuntimeException(ex);

@@ -6,6 +6,7 @@ import orange.wz.provider.*;
 import orange.wz.provider.properties.WzCanvasProperty;
 import orange.wz.provider.properties.WzStringProperty;
 
+import javax.swing.tree.DefaultMutableTreeNode;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,24 +20,113 @@ public final class Outlink {
     private static String lastCanvasPath;
     private static final List<WzDirectory> canvasCache = new ArrayList<>();
 
-    record Data(WzCanvasProperty object, List<String> path) {
+    public record Result(List<String> successPaths, List<String> failedPaths) {
     }
 
-    public static boolean replace(List<WzObject> objects) {
-        if (!loadCanvasFiles(objects.getFirst())) {
-            resetCache();
-            return false;
+    record Data(WzCanvasProperty object, List<String> path, boolean canvasMode) {
+    }
+
+    private record ParsedOutlink(List<String> path, boolean canvasMode) {
+    }
+
+    public static Result replace(List<WzObject> objects, DefaultMutableTreeNode treeRoot) {
+        Map<String, List<Data>> canvasCollector = new HashMap<>();
+        List<Data> normalData = new ArrayList<>();
+        collect(objects, canvasCollector, normalData);
+
+        List<String> successPaths = new ArrayList<>();
+        List<String> failedPaths = new ArrayList<>();
+
+        int canvasTotal = canvasCollector.values().stream().mapToInt(List::size).sum();
+        int total = canvasTotal + normalData.size();
+        int current = 0;
+
+        for (Data data : normalData) {
+            WzCanvasProperty to = data.object();
+            WzCanvasProperty from = findInOpenedWzFiles(data.path(), treeRoot);
+            if (from == null) {
+                failedPaths.add(to.getPath() + "  ->  " + MainFrame.i18n.get("error.outlink.cant_find_wz", String.join("/", data.path())));
+            } else {
+                applyPng(to, from);
+                successPaths.add(to.getPath());
+            }
+            current++;
+            if (total > 0) MainFrame.getInstance().updateProgress(current, total);
         }
 
-        Map<String, List<Data>> collector = new HashMap<>();
-        collect(collector, objects);
+        if (!canvasCollector.isEmpty()) {
+            boolean loaded = loadCanvasFiles(objects.getFirst());
+            if (!loaded) {
+                resetCache();
+                for (List<Data> dataList : canvasCollector.values()) {
+                    for (Data d : dataList) {
+                        failedPaths.add(d.object().getPath() + "  ->  " + MainFrame.i18n.get("error.outlink.collect", ""));
+                    }
+                }
+            } else {
+                current = processCanvas(canvasCollector, canvasCache, successPaths, failedPaths, total, current);
+            }
+        }
 
-        int total = collector.values().stream()
-                .mapToInt(List::size)
-                .sum();
+        return new Result(successPaths, failedPaths);
+    }
 
-        replace(collector, total);
-        return true;
+    private static int processCanvas(Map<String, List<Data>> canvasCollector, List<WzDirectory> cache,
+                                     List<String> successPaths, List<String> failedPaths, int total, int current) {
+        for (var entry : canvasCollector.entrySet()) {
+            String imageStr = entry.getKey();
+            List<Data> dataList = entry.getValue();
+            WzImage image = getCanvasImage(imageStr, cache);
+            if (image == null) {
+                log.error(MainFrame.i18n.get("error.outlink.cant_find_image", imageStr));
+                for (Data d : dataList) {
+                    failedPaths.add(d.object().getPath() + "  ->  " + MainFrame.i18n.get("error.outlink.cant_find_image", imageStr));
+                }
+                current += dataList.size();
+                if (total > 0) MainFrame.getInstance().updateProgress(current, total);
+                continue;
+            }
+            if (!image.parse()) {
+                String parseErr = MainFrame.i18n.get("error.parse", image.getName(), image.getStatus().getMessage());
+                MainFrame.getInstance().setStatusTextWithErrLog(parseErr);
+                for (Data d : dataList) {
+                    failedPaths.add(d.object().getPath() + "  ->  " + parseErr);
+                }
+                current += dataList.size();
+                if (total > 0) MainFrame.getInstance().updateProgress(current, total);
+                continue;
+            }
+
+            for (Data data : dataList) {
+                WzCanvasProperty to = data.object();
+                List<String> paths = data.path();
+
+                int step;
+                for (step = 0; step < paths.size(); step++) {
+                    if (paths.get(step).equals(imageStr)) break;
+                }
+                step++;
+
+                WzCanvasProperty from = getCanvasProperty(image.getChildren(), paths, step);
+                if (from == null) {
+                    log.error(MainFrame.i18n.get("error.outlink.cant_find_from", to.getPath(), paths));
+                    failedPaths.add(to.getPath() + "  ->  " + MainFrame.i18n.get("error.outlink.cant_find_from", to.getPath(), paths));
+                } else {
+                    applyPng(to, from);
+                    successPaths.add(to.getPath());
+                }
+                current++;
+                if (total > 0) MainFrame.getInstance().updateProgress(current, total);
+            }
+        }
+        return current;
+    }
+
+    private static void applyPng(WzCanvasProperty to, WzCanvasProperty from) {
+        to.setPng(from.getPngImage(false), from.getFormat(), from.getScale());
+        to.setTempChanged(true);
+        to.getWzImage().setChanged(true);
+        to.removeChild("_outlink");
     }
 
     private static void resetCache() {
@@ -58,7 +148,7 @@ public final class Outlink {
         // 确保version已经生成
         if (!wzFile.parse()) {
             MainFrame.getInstance().setStatusTextWithErrLog(MainFrame.i18n.get("error.parse", wzFile.getName(), wzFile.getStatus().getMessage()));
-            throw new RuntimeException();
+            return false;
         }
 
         short version = wzFile.getHeader().getFileVersion();
@@ -79,7 +169,7 @@ public final class Outlink {
                 WzFile canvasWz = new WzFile(path.toString(), version, keyBoxName, iv, key);
                 if (!canvasWz.parse()) {
                     MainFrame.getInstance().setStatusTextWithErrLog(MainFrame.i18n.get("error.parse", canvasWz.getName(), canvasWz.getStatus().getMessage()));
-                    throw new RuntimeException();
+                    return false;
                 }
                 canvasCache.add(canvasWz.getWzDirectory());
             }
@@ -104,101 +194,101 @@ public final class Outlink {
         return null;
     }
 
-    private static void collect(Map<String, List<Data>> collector, List<? extends WzObject> objects) {
+    private static void collect(List<? extends WzObject> objects, Map<String, List<Data>> canvasCollector, List<Data> normalCollector) {
         for (WzObject wzObject : objects) {
             if (wzObject instanceof WzCanvasProperty property) {
-                List<String> path = getOutlinkString(property);
-                if (path == null || path.isEmpty()) continue;
+                ParsedOutlink parsed = getOutlink(property);
+                if (parsed == null) continue;
 
-                String image = null;
-                for (String pathStr : path) {
-                    if (pathStr.endsWith(".img")) {
-                        image = pathStr;
-                        break;
+                if (parsed.canvasMode) {
+                    String image = null;
+                    for (String pathStr : parsed.path) {
+                        if (pathStr.endsWith(".img")) {
+                            image = pathStr;
+                            break;
+                        }
                     }
-                }
-                if (image == null) continue;
+                    if (image == null) continue;
 
-                List<Data> dataList = collector.computeIfAbsent(image, k -> new ArrayList<>());
-                dataList.add(new Data(property, path));
+                    canvasCollector.computeIfAbsent(image, k -> new ArrayList<>())
+                            .add(new Data(property, parsed.path, true));
+                } else {
+                    normalCollector.add(new Data(property, parsed.path, false));
+                }
             } else if (wzObject instanceof WzDirectory wzDir) {
-                collect(collector, wzDir.getChildren());
+                collect(wzDir.getChildren(), canvasCollector, normalCollector);
             } else if (wzObject instanceof WzImage wzImg) {
                 if (!wzImg.parse()) {
                     MainFrame.getInstance().setStatusTextWithErrLog(MainFrame.i18n.get("error.parse", wzImg.getName(), wzImg.getStatus().getMessage()));
                     throw new RuntimeException();
                 }
-                collect(collector, wzImg.getChildren());
+                collect(wzImg.getChildren(), canvasCollector, normalCollector);
             } else if (wzObject instanceof WzImageProperty property && property.isListProperty()) {
-                collect(collector, property.getChildren());
+                collect(property.getChildren(), canvasCollector, normalCollector);
             }
         }
     }
 
-    private static List<String> getOutlinkString(WzImageProperty property) {
+    private static ParsedOutlink getOutlink(WzImageProperty property) {
         WzImageProperty outlinkNode = property.getChild("_outlink");
-        if (outlinkNode == null) {
+        if (!(outlinkNode instanceof WzStringProperty sp)) return null;
+
+        String outlink = sp.getValue();
+        if (outlink == null || outlink.isEmpty()) return null;
+
+        List<String> parts = Arrays.stream(outlink.split("/"))
+                .map(p -> {
+                    if (p.equals("??")) return "碟喻";
+                    if (p.equals("奢辨_??00")) return "奢辨_碟喻00";
+                    return p;
+                })
+                .collect(Collectors.toList());
+
+        int canvasIdx = parts.indexOf("_Canvas");
+        if (canvasIdx >= 0 && canvasIdx + 1 < parts.size()) {
+            return new ParsedOutlink(new ArrayList<>(parts.subList(canvasIdx + 1, parts.size())), true);
+        }
+        if (parts.isEmpty()) return null;
+        return new ParsedOutlink(parts, false);
+    }
+
+    private static WzCanvasProperty findInOpenedWzFiles(List<String> path, DefaultMutableTreeNode treeRoot) {
+        if (path.isEmpty()) return null;
+        String wzName = path.get(0);
+
+        int childCount = treeRoot.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            DefaultMutableTreeNode child = (DefaultMutableTreeNode) treeRoot.getChildAt(i);
+            Object userObj = child.getUserObject();
+            if (!(userObj instanceof WzDirectory wzDir)) continue;
+            if (!wzDir.isWzFile()) continue;
+
+            String stripped = wzDir.getName().replaceAll("(?i)\\.wz$", "");
+            if (!stripped.equals(wzName)) continue;
+
+            WzCanvasProperty found = resolveInWz(wzDir.getChildren(), path, 1);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static WzCanvasProperty resolveInWz(List<? extends WzObject> children, List<String> path, int step) {
+        if (step >= path.size()) return null;
+        for (WzObject o : children) {
+            if (!o.getName().equals(path.get(step))) continue;
+            if (step == path.size() - 1) {
+                return (o instanceof WzCanvasProperty c) ? c : null;
+            }
+            if (o instanceof WzImage img) {
+                if (!img.parse()) return null;
+                return resolveInWz(img.getChildren(), path, step + 1);
+            }
+            if (o instanceof WzImageProperty p) {
+                return resolveInWz(p.getChildren(), path, step + 1);
+            }
             return null;
         }
-
-        String outlink = ((WzStringProperty) outlinkNode).getValue();
-
-        List<String> outlinkPaths =
-                Arrays.stream(outlink.split("/"))
-                        .map(p -> {
-                            if (p.equals("??")) return "碟喻";
-                            if (p.equals("奢辨_??00")) return "奢辨_碟喻00";
-                            return p;
-                        })
-                        .collect(Collectors.toList());
-        int rootIndex = outlinkPaths.indexOf("_Canvas") + 1;
-        if (rootIndex == 0) {
-            return new ArrayList<>();
-        }
-
-        return outlinkPaths.subList(rootIndex, outlinkPaths.size());
-    }
-
-    private static void replace(Map<String, List<Data>> collector, int total) {
-        int current = 0;
-        for (var entry : collector.entrySet()) {
-            String imageStr = entry.getKey();
-            List<Data> dataList = entry.getValue();
-            WzImage image = getCanvasImage(imageStr, canvasCache);
-            if (image == null) {
-                log.error(MainFrame.i18n.get("error.outlink.cant_find_image", imageStr));
-                current += dataList.size();
-                continue;
-            }
-            if (!image.parse()) {
-                MainFrame.getInstance().setStatusTextWithErrLog(MainFrame.i18n.get("error.parse", image.getName(), image.getStatus().getMessage()));
-                throw new RuntimeException();
-            }
-
-            for (Data data : dataList) {
-                WzCanvasProperty to = data.object();
-                List<String> paths = data.path();
-
-                int step;
-                for (step = 0; step < paths.size(); step++) {
-                    if (paths.get(step).equals(imageStr)) break;
-                }
-                step++;
-
-                WzCanvasProperty from = getCanvasProperty(image.getChildren(), paths, step);
-                if (from == null) {
-                    log.error(MainFrame.i18n.get("error.outlink.cant_find_from", to.getPath(), paths));
-                    current++;
-                    continue;
-                }
-
-                to.setPng(from.getPngImage(false), from.getFormat(), from.getScale());
-                to.setTempChanged(true);
-                to.getWzImage().setChanged(true);
-
-                MainFrame.getInstance().updateProgress(++current, total);
-            }
-        }
+        return null;
     }
 
     private static WzImage getCanvasImage(String name, List<? extends WzObject> objects) {
