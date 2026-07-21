@@ -1377,12 +1377,24 @@ public final class EditPane extends JSplitPane {
 
         MainFrame.getInstance().setStatusText(MainFrame.i18n.get("status.file_saving"));
         MainFrame.getInstance().updateProgress(0, 0);
+
+        ProgressDialog progressDialog = new ProgressDialog(
+                MainFrame.i18n.get("status.file_saving"),
+                MainFrame.i18n.get("status.file_saving")
+        );
+
         new SwingWorker<>() {
             @Override
             protected Void doInBackground() {
                 for (TreePath treePath : treePaths) {
                     DefaultMutableTreeNode node = (DefaultMutableTreeNode) treePath.getLastPathComponent();
-                    if (node.getUserObject() instanceof WzFolder) {
+                    Object userObject = node.getUserObject();
+                    if (userObject instanceof WzObject wzObject) {
+                        String name = wzObject.getName();
+                        SwingUtilities.invokeLater(() -> progressDialog.setMessage(
+                                MainFrame.i18n.get("status.package_running", name)));
+                    }
+                    if (userObject instanceof WzFolder) {
                         saveWzFolder(node);
                     } else {
                         saveFile(node);
@@ -1395,9 +1407,13 @@ public final class EditPane extends JSplitPane {
 
             @Override
             protected void done() {
+                progressDialog.dispose();
                 MainFrame.getInstance().setStatusText(MainFrame.i18n.get("status.file_saved"));
             }
         }.execute();
+
+        // 模态阻塞，直到后台 SwingWorker 的 done() 调用 dispose
+        progressDialog.setVisible(true);
     }
 
     /**
@@ -1509,10 +1525,30 @@ public final class EditPane extends JSplitPane {
                 return;
             }
             wz.setFilePath(saveFile.getAbsolutePath());
-            if (!wz.save()) {
-                JMessageUtil.error(MainFrame.i18n.get("error.save_read_log"));
-            }
-            reloadFile(node, new WzKey(-1, keyBoxName, iv, key));
+
+            ProgressDialog progressDialog = new ProgressDialog(
+                    MainFrame.i18n.get("status.file_saving"),
+                    MainFrame.i18n.get("status.package_running", wz.getName())
+            );
+
+            new SwingWorker<>() {
+                @Override
+                protected Void doInBackground() {
+                    if (!wz.save()) {
+                        SwingUtilities.invokeLater(() -> JMessageUtil.error(MainFrame.i18n.get("error.save_read_log")));
+                    }
+                    return null;
+                }
+
+                @Override
+                protected void done() {
+                    progressDialog.dispose();
+                    reloadFile(node, new WzKey(-1, keyBoxName, iv, key));
+                }
+            }.execute();
+
+            // 模态阻塞，直到后台 SwingWorker 的 done() 调用 dispose
+            progressDialog.setVisible(true);
         }
     }
 
