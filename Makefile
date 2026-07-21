@@ -5,7 +5,7 @@ dev:
 	@make -j2 dev-backend dev-frontend
 
 dev-backend:
-	./mvnw spring-boot:run -Dspring-boot.run.jvmArguments="-Xmx8g"
+	./mvnw spring-boot:run
 
 dev-frontend:
 	cd vue && yarn dev
