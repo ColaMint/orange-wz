@@ -8,6 +8,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.prefs.Preferences;
 
 public class FileDialog {
@@ -120,10 +121,10 @@ public class FileDialog {
         chooser.setDialogTitle(title);
         chooser.setFileSelectionMode(SystemFileChooser.FILES_ONLY);
         chooser.setMultiSelectionEnabled(false);
-        chooser.setSelectedFile(defaultFile);
 
         // 添加扩展名过滤
         boolean hasFilter = filters != null && filters.length > 0;
+        chooser.setSelectedFile(getChooserDefaultFile(defaultFile, filters));
         if (hasFilter) {
             String desc = String.join(", ", filters) + " " + MainFrame.i18n.get("test.temp0147");
             chooser.addChoosableFileFilter(new SystemFileChooser.FileNameExtensionFilter(desc, filters));
@@ -133,23 +134,45 @@ public class FileDialog {
         File file = null;
         if (chooser.showSaveDialog(parent) == SystemFileChooser.APPROVE_OPTION) {
             file = chooser.getSelectedFile();
-            if (hasFilter) { // 检查输入的后缀名
-                String name = file.getName();
-
-                boolean hasExt = false;
-                for (String ext : filters) {
-                    if (name.toLowerCase().endsWith("." + ext.toLowerCase())) {
-                        hasExt = true;
-                        break;
-                    }
-                }
-
-                if (!hasExt) {
-                    file = new File(file.getParentFile(), name + "." + filters[0]);
-                }
-            }
+            if (hasFilter) file = normalizeSaveFileExtension(file, filters);
         }
 
         return file;
+    }
+
+    static File getChooserDefaultFile(File defaultFile, String[] filters) {
+        if (defaultFile == null || filters == null || filters.length == 0 || !isMac()) {
+            return defaultFile;
+        }
+
+        String name = defaultFile.getName();
+        for (String ext : filters) {
+            String suffix = "." + ext;
+            if (name.toLowerCase(Locale.ROOT).endsWith(suffix.toLowerCase(Locale.ROOT))) {
+                return new File(defaultFile.getParentFile(), name.substring(0, name.length() - suffix.length()));
+            }
+        }
+        return defaultFile;
+    }
+
+    static File normalizeSaveFileExtension(File file, String[] filters) {
+        String name = file.getName();
+        String lowerName = name.toLowerCase(Locale.ROOT);
+        for (String ext : filters) {
+            String suffix = "." + ext.toLowerCase(Locale.ROOT);
+            if (lowerName.endsWith(suffix)) {
+                String duplicateSuffix = suffix + suffix;
+                while (lowerName.endsWith(duplicateSuffix)) {
+                    name = name.substring(0, name.length() - suffix.length());
+                    lowerName = name.toLowerCase(Locale.ROOT);
+                }
+                return new File(file.getParentFile(), name);
+            }
+        }
+        return new File(file.getParentFile(), name + "." + filters[0]);
+    }
+
+    private static boolean isMac() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
     }
 }

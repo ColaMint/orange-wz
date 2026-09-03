@@ -1248,6 +1248,42 @@ public final class EditPane extends JSplitPane {
         loadFiles(treeRoot, files, key);
     }
 
+    public void addMergedWz(WzFile wzFile) {
+        Runnable addToTree = () -> {
+            DefaultMutableTreeNode node = buildLoadedTree(wzFile.getWzDirectory());
+            treeModel.insertNodeInto(node, treeRoot, treeRoot.getChildCount());
+            TreePath path = new TreePath(node.getPath());
+            tree.expandPath(path);
+            tree.setSelectionPath(path);
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            addToTree.run();
+        } else {
+            SwingUtilities.invokeLater(addToTree);
+        }
+    }
+
+    /**
+     * 合并过程已经加载了部分或全部 IMG，插入结果时需要一次性同步这些内存节点到 JTree。
+     */
+    private DefaultMutableTreeNode buildLoadedTree(WzObject object) {
+        DefaultMutableTreeNode node = new DefaultMutableTreeNode(object);
+        List<? extends WzObject> loadedChildren = switch (object) {
+            case WzDirectory directory -> directory.getChildren();
+            case WzImage image -> image.getChildren();
+            case WzImageProperty property when property.isListProperty() -> property.getChildren();
+            default -> List.of();
+        };
+
+        List<WzObject> children = new ArrayList<>(loadedChildren);
+        WzTool.sortWzObjects(children);
+        for (WzObject child : children) {
+            node.add(buildLoadedTree(child));
+        }
+        return node;
+    }
+
     // 重载 -------------------------------------------------------------------------------------------------------------
     private void reloadFile(DefaultMutableTreeNode node, WzKey key) {
         DefaultMutableTreeNode pNode = (DefaultMutableTreeNode) node.getParent();

@@ -8,12 +8,17 @@ import lombok.extern.slf4j.Slf4j;
 import orange.wz.I18nUtil;
 import orange.wz.gui.component.FileDialog;
 import orange.wz.gui.component.dialog.LogDialog;
+import orange.wz.gui.component.dialog.ProgressDialog;
+import orange.wz.gui.component.dialog.WzMergeDialog;
 import orange.wz.gui.component.form.impl.CanvasForm;
 import orange.wz.gui.component.key.KeyBox;
 import orange.wz.gui.component.key.KeyManager;
 import orange.wz.gui.component.panel.CenterPane;
+import orange.wz.gui.utils.JMessageUtil;
 import orange.wz.gui.utils.UrlUtil;
 import orange.wz.manager.ServerManager;
+import orange.wz.provider.WzFile;
+import orange.wz.provider.tools.WzMergeService;
 import orange.wz.provider.tools.wzkey.WzKey;
 import orange.wz.provider.tools.wzkey.WzKeyStorage;
 
@@ -34,8 +39,11 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.prefs.Preferences;
 
 import static orange.wz.gui.Icons.*;
@@ -111,12 +119,14 @@ public class MainFrame extends JFrame {
         JMenuItem loadFiles = new JMenuItem(i18n.get("menu.file.loadFiles"), FcFileIcon);
         JMenuItem loadFolder = new JMenuItem(i18n.get("menu.file.loadFolders"), FcFolderIcon);
         JMenuItem newWz = new JMenuItem(i18n.get("menu.file.newWz"), AiOutlineFileWordIcon);
+        JMenuItem mergeWz = new JMenuItem(i18n.get("menu.file.mergeWz"));
         JMenuItem newImg = new JMenuItem(i18n.get("menu.file.newImg"), AiOutlineFileMarkdownIcon);
         JMenuItem unloadAll = new JMenuItem(i18n.get("menu.file.unloadAll"), AiOutlineCloseIcon);
 
         fileMenu.add(loadFiles);
         fileMenu.add(loadFolder);
         fileMenu.add(newWz);
+        fileMenu.add(mergeWz);
         fileMenu.add(newImg);
         fileMenu.add(unloadAll);
 
@@ -227,9 +237,129 @@ public class MainFrame extends JFrame {
         clearCB.addActionListener(e -> clearClipboard());
         gc.addActionListener(e -> gc());
         newWz.addActionListener(e -> centerPane.getLeftEditPane().createWz());
+        mergeWz.addActionListener(e -> mergeWz());
         newImg.addActionListener(e -> centerPane.getLeftEditPane().createImg());
 
         return menuBar;
+    }
+
+    private void mergeWz() {
+        WzKey wzKey = (WzKey) keyBox.getSelectedItem();
+        if (wzKey == null) {
+            setStatusTextWithWarnLog(i18n.get("warn.not_select_key"));
+            return;
+        }
+
+        File oldSource = chooseMergeFile("merge.select_old.prompt", "merge.select_old.title");
+        if (oldSource == null) return;
+        File newSource = chooseMergeFile("merge.select_new.prompt", "merge.select_new.title");
+        if (newSource == null) return;
+
+        if (isSameFile(oldSource, newSource)) {
+            JMessageUtil.warn(i18n.get("merge.same_file"));
+            return;
+        }
+
+        WzFile oldWz = new WzFile(oldSource.getAbsolutePath(), (short) -1,
+                wzKey.getName(), wzKey.getIv(), wzKey.getUserKey());
+        WzFile newWz = new WzFile(newSource.getAbsolutePath(), (short) -1,
+                wzKey.getName(), wzKey.getIv(), wzKey.getUserKey());
+        WzMergeService mergeService = new WzMergeService();
+        ProgressDialog progress = new ProgressDialog(
+                i18n.get("menu.file.mergeWz"), i18n.get("merge.progress.compare"));
+
+        new SwingWorker<List<WzMergeService.Candidate>, Void>() {
+            @Override
+            protected List<WzMergeService.Candidate> doInBackground() {
+                return mergeService.compare(oldWz, newWz);
+            }
+
+            @Override
+            protected void done() {
+                progress.dispose();
+                try {
+                    List<WzMergeService.Candidate> candidates = get();
+                    List<WzMergeService.Candidate> selected = WzMergeDialog.show(
+                            MainFrame.this, oldSource.getName(), newSource.getName(), candidates);
+                    if (selected == null || selected.isEmpty()) {
+                        oldWz.clear();
+                        newWz.clear();
+                        return;
+                    }
+                    applyMerge(mergeService, oldWz, newWz, selected);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    handleMergeFailure(oldWz, newWz, e);
+                } catch (ExecutionException | RuntimeException e) {
+                    handleMergeFailure(oldWz, newWz, e);
+                }
+            }
+        }.execute();
+
+        progress.setVisible(true);
+    }
+
+    private File chooseMergeFile(String promptKey, String titleKey) {
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                i18n.get(promptKey),
+                i18n.get(titleKey),
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.INFORMATION_MESSAGE
+        );
+        if (choice != JOptionPane.OK_OPTION) return null;
+
+        List<File> files = FileDialog.chooseOpenFiles(this, i18n.get(titleKey), false, new String[]{"wz"});
+        return files.isEmpty() ? null : files.getFirst();
+    }
+
+    private boolean isSameFile(File first, File second) {
+        try {
+            return Files.isSameFile(first.toPath(), second.toPath());
+        } catch (IOException e) {
+            Path firstPath = first.toPath().toAbsolutePath().normalize();
+            Path secondPath = second.toPath().toAbsolutePath().normalize();
+            return firstPath.equals(secondPath);
+        }
+    }
+
+    private void applyMerge(WzMergeService mergeService, WzFile oldWz, WzFile newWz,
+                            List<WzMergeService.Candidate> selected) {
+        ProgressDialog progress = new ProgressDialog(
+                i18n.get("menu.file.mergeWz"), i18n.get("merge.progress.apply"));
+        new SwingWorker<WzFile, Void>() {
+            @Override
+            protected WzFile doInBackground() {
+                return mergeService.apply(oldWz, selected);
+            }
+
+            @Override
+            protected void done() {
+                progress.dispose();
+                try {
+                    WzFile merged = get();
+                    newWz.clear();
+                    centerPane.getLeftEditPane().addMergedWz(merged);
+                    setStatusText(i18n.get("merge.completed", merged.getName()));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    handleMergeFailure(oldWz, newWz, e);
+                } catch (ExecutionException | RuntimeException e) {
+                    handleMergeFailure(oldWz, newWz, e);
+                }
+            }
+        }.execute();
+        progress.setVisible(true);
+    }
+
+    private void handleMergeFailure(WzFile oldWz, WzFile newWz, Exception error) {
+        oldWz.clear();
+        newWz.clear();
+        Throwable cause = error instanceof ExecutionException && error.getCause() != null
+                ? error.getCause() : error;
+        String message = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        log.error("WZ merge failed", cause);
+        JMessageUtil.error(i18n.get("merge.failed", message));
     }
 
     private JPanel createStatusBar() {
