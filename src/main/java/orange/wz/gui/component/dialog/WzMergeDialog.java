@@ -5,6 +5,7 @@ import orange.wz.provider.tools.WzMergeService.Candidate;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,8 +30,26 @@ public final class WzMergeDialog extends JDialog {
 
         JTable table = new JTable(model);
         table.setFillsViewportHeight(true);
-        table.getColumnModel().getColumn(1).setMinWidth(72);
-        table.getColumnModel().getColumn(1).setMaxWidth(90);
+        table.getColumnModel().getColumn(0).setPreferredWidth(320);
+        table.getColumnModel().getColumn(1).setPreferredWidth(260);
+        table.getColumnModel().getColumn(2).setPreferredWidth(260);
+        table.getColumnModel().getColumn(3).setMinWidth(72);
+        table.getColumnModel().getColumn(3).setMaxWidth(90);
+        DefaultTableCellRenderer textRenderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                           boolean hasFocus, int row, int column) {
+                Component component = super.getTableCellRendererComponent(
+                        table, value, isSelected, hasFocus, row, column);
+                if (component instanceof JLabel label) {
+                    label.setToolTipText(value == null ? null : value.toString());
+                }
+                return component;
+            }
+        };
+        for (int column = 0; column < 3; column++) {
+            table.getColumnModel().getColumn(column).setCellRenderer(textRenderer);
+        }
         add(new JScrollPane(table), BorderLayout.CENTER);
 
         JButton confirm = new JButton(MainFrame.i18n.get("merge.confirm"));
@@ -60,7 +79,7 @@ public final class WzMergeDialog extends JDialog {
 
         getRootPane().setDefaultButton(confirm);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        setSize(720, 460);
+        setSize(1000, 520);
         setLocationRelativeTo(owner);
     }
 
@@ -96,32 +115,44 @@ public final class WzMergeDialog extends JDialog {
 
         @Override
         public int getColumnCount() {
-            return 2;
+            return 4;
         }
 
         @Override
         public String getColumnName(int column) {
-            return MainFrame.i18n.get(column == 0 ? "merge.column.path" : "merge.column.selected");
+            return MainFrame.i18n.get(switch (column) {
+                case 0 -> "merge.column.path";
+                case 1 -> "merge.column.old";
+                case 2 -> "merge.column.new";
+                default -> "merge.column.selected";
+            });
         }
 
         @Override
         public Class<?> getColumnClass(int columnIndex) {
-            return columnIndex == 1 ? Boolean.class : String.class;
+            return columnIndex == 3 ? Boolean.class : String.class;
         }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
-            return columnIndex == 0 ? candidates.get(rowIndex).path() : selected.get(rowIndex);
+            Candidate candidate = candidates.get(rowIndex);
+            return switch (columnIndex) {
+                case 0 -> candidate.path();
+                case 1 -> candidate.oldContent() == null
+                        ? MainFrame.i18n.get("merge.value.missing") : candidate.oldContent();
+                case 2 -> candidate.newContent();
+                default -> selected.get(rowIndex);
+            };
         }
 
         @Override
         public boolean isCellEditable(int rowIndex, int columnIndex) {
-            return columnIndex == 1;
+            return columnIndex == 3;
         }
 
         @Override
         public void setValueAt(Object value, int rowIndex, int columnIndex) {
-            if (columnIndex == 1 && value instanceof Boolean checked) {
+            if (columnIndex == 3 && value instanceof Boolean checked) {
                 selected.set(rowIndex, checked);
                 fireTableCellUpdated(rowIndex, columnIndex);
             }

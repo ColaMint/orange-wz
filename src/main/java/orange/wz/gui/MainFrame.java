@@ -119,7 +119,7 @@ public class MainFrame extends JFrame {
         JMenuItem loadFiles = new JMenuItem(i18n.get("menu.file.loadFiles"), FcFileIcon);
         JMenuItem loadFolder = new JMenuItem(i18n.get("menu.file.loadFolders"), FcFolderIcon);
         JMenuItem newWz = new JMenuItem(i18n.get("menu.file.newWz"), AiOutlineFileWordIcon);
-        JMenuItem mergeWz = new JMenuItem(i18n.get("menu.file.mergeWz"));
+        JMenuItem mergeWz = new JMenuItem(i18n.get("menu.file.mergeWz"), AiOutlineFileMarkdownIcon);
         JMenuItem newImg = new JMenuItem(i18n.get("menu.file.newImg"), AiOutlineFileMarkdownIcon);
         JMenuItem unloadAll = new JMenuItem(i18n.get("menu.file.unloadAll"), AiOutlineCloseIcon);
 

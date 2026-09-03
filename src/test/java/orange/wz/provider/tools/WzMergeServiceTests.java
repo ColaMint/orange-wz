@@ -3,13 +3,17 @@ package orange.wz.provider.tools;
 import orange.wz.provider.WzDirectory;
 import orange.wz.provider.WzFile;
 import orange.wz.provider.WzImage;
-import orange.wz.provider.properties.WzIntProperty;
-import orange.wz.provider.properties.WzListProperty;
+import orange.wz.provider.properties.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -34,7 +38,7 @@ class WzMergeServiceTests {
     }
 
     @Test
-    void matchingContainersAreComparedThroughImageProperties() {
+    void matchingContainersCompareExistingValuesAndFindAddedProperties() {
         WzFile oldFile = newFile("Base.wz");
         WzFile newFile = newFile("Next.wz");
         WzImage oldImage = image("A.img", oldFile);
@@ -49,8 +53,71 @@ class WzMergeServiceTests {
 
         List<WzMergeService.Candidate> candidates = service.compare(oldFile, newFile);
 
+        assertEquals(Set.of("/A.img/info/same", "/A.img/info/added"), candidates.stream()
+                .map(WzMergeService.Candidate::path)
+                .collect(Collectors.toSet()));
+        WzMergeService.Candidate updated = candidates.stream()
+                .filter(candidate -> candidate.path().endsWith("/same"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(WzMergeService.Action.UPDATE, updated.action());
+        assertEquals("Int: 1", updated.oldContent());
+        assertEquals("Int: 2", updated.newContent());
+
+        service.apply(oldFile, List.of(updated));
+        WzListProperty mergedList = (WzListProperty) oldImage.getChild("info");
+        assertEquals(2, ((WzIntProperty) mergedList.getChild("same")).getValue());
+    }
+
+    @Test
+    void comparesLeafContentAccordingToItsType() {
+        WzFile oldFile = newFile("Base.wz");
+        WzFile newFile = newFile("Next.wz");
+        WzImage oldImage = image("A.img", oldFile);
+        WzImage newImage = image("A.img", newFile);
+        oldImage.addChild(new WzStringProperty("string", "old", oldImage, oldImage));
+        newImage.addChild(new WzStringProperty("string", "new", newImage, newImage));
+        oldImage.addChild(new WzVectorProperty("vector", 1, 2, oldImage, oldImage));
+        newImage.addChild(new WzVectorProperty("vector", 1, 3, newImage, newImage));
+        WzLuaProperty oldLua = new WzLuaProperty("lua", new byte[0], oldImage, oldImage);
+        WzLuaProperty newLua = new WzLuaProperty("lua", new byte[0], newImage, newImage);
+        oldLua.setString("old");
+        newLua.setString("new");
+        oldImage.addChild(oldLua);
+        newImage.addChild(newLua);
+        oldImage.addChild(new WzSoundProperty("sound", 100, new byte[]{1}, new byte[]{2}, oldImage, oldImage));
+        newImage.addChild(new WzSoundProperty("sound", 101, new byte[]{1}, new byte[]{2}, newImage, newImage));
+        oldImage.addChild(new WzRawDataProperty("raw", (byte) 1, 0, oldImage, oldImage));
+        newImage.addChild(new WzRawDataProperty("raw", (byte) 2, 0, newImage, newImage));
+
+        List<WzMergeService.Candidate> candidates = service.compare(oldFile, newFile);
+
+        assertEquals(Set.of("/A.img/string", "/A.img/vector", "/A.img/lua", "/A.img/sound", "/A.img/raw"),
+                candidates.stream().map(WzMergeService.Candidate::path).collect(Collectors.toSet()));
+        assertTrue(candidates.stream().allMatch(candidate -> candidate.action() == WzMergeService.Action.UPDATE));
+    }
+
+    @Test
+    void changedCanvasReplacesItsWholeSubtree() throws Exception {
+        WzFile oldFile = newFile("Base.wz");
+        WzFile newFile = newFile("Next.wz");
+        WzImage oldImage = image("A.img", oldFile);
+        WzImage newImage = image("A.img", newFile);
+        WzCanvasProperty oldCanvas = new WzCanvasProperty("canvas", WzPngFormat.ARGB8888.getValue(),
+                0, png(0xff000000), oldImage, oldImage);
+        WzCanvasProperty newCanvas = new WzCanvasProperty("canvas", WzPngFormat.ARGB8888.getValue(),
+                0, png(0xffffffff), newImage, newImage);
+        oldCanvas.addChild(new WzIntProperty("child", 1, oldCanvas, oldImage));
+        newCanvas.addChild(new WzIntProperty("child", 2, newCanvas, newImage));
+        oldImage.addChild(oldCanvas);
+        newImage.addChild(newCanvas);
+
+        List<WzMergeService.Candidate> candidates = service.compare(oldFile, newFile);
+
         assertEquals(1, candidates.size());
-        assertEquals("/A.img/info/added", candidates.getFirst().path());
+        assertEquals("/A.img/canvas", candidates.getFirst().path());
+        assertEquals(WzMergeService.Action.UPDATE, candidates.getFirst().action());
+        assertNotEquals(candidates.getFirst().oldContent(), candidates.getFirst().newContent());
     }
 
     @Test
@@ -136,8 +203,16 @@ class WzMergeServiceTests {
     }
 
     private WzImage image(String name, WzFile file) {
-        WzImage image = new WzImage(name, file.getWzDirectory(), file.getReader());
+        WzImage image = new WzImage(name, file.getWzDirectory(), new BinaryReader(new byte[0]));
         file.getWzDirectory().addChild(image);
         return image;
+    }
+
+    private byte[] png(int argb) throws Exception {
+        BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        image.setRGB(0, 0, argb);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", output);
+        return output.toByteArray();
     }
 }
