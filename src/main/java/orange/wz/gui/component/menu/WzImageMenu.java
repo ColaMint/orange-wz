@@ -9,6 +9,7 @@ public final class WzImageMenu extends TreeMenu {
         super(editPane);
 
         add(btnSubNodeForList);
+        add(btnSelectChildren);
         add(btnCopy);
         add(btnPaste);
         add(btnDelete);

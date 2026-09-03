@@ -9,6 +9,7 @@ public final class WzDirectoryMenu extends TreeMenu {
         super(editPane);
 
         add(btnSubNode);
+        add(btnSelectChildren);
         add(btnCopy);
         add(btnPaste);
         add(btnDelete);

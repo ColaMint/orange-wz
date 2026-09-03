@@ -16,6 +16,7 @@ public final class WzImageFileMenu extends TreeMenu {
         btnExport.add(exportXmlBtn);
 
         add(btnSubNodeForList);
+        add(btnSelectChildren);
         add(btnSave);
         add(btnSaveAs);
         add(btnUnload);

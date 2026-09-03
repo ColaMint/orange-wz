@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 import static orange.wz.gui.Icons.*;
@@ -844,6 +845,49 @@ public final class EditPane extends JSplitPane {
     }
 
     // Tree 操作 --------------------------------------------------------------------------------------------------------
+
+    public void selectAllChildren() {
+        TreePath[] selectedPaths = tree.getSelectionPaths();
+        if (TreePathUtil.isNullOrMultiple(selectedPaths)) return;
+
+        DefaultMutableTreeNode node = (DefaultMutableTreeNode) selectedPaths[0].getLastPathComponent();
+        if (!node.isLeaf()) {
+            selectChildNodes(node);
+            return;
+        }
+
+        AtomicBoolean selected = new AtomicBoolean();
+        Runnable selectOnce = () -> {
+            if (selected.compareAndSet(false, true)) {
+                selectChildNodes(node);
+            }
+        };
+        SwingWorker<Void, Void> worker = handleTreeDoubleClick(node);
+        worker.addPropertyChangeListener(event -> {
+            if ("state".equals(event.getPropertyName())
+                    && event.getNewValue() == SwingWorker.StateValue.DONE) {
+                selectOnce.run();
+            }
+        });
+        if (worker.isDone()) {
+            SwingUtilities.invokeLater(selectOnce);
+        }
+    }
+
+    private void selectChildNodes(DefaultMutableTreeNode parent) {
+        int childCount = parent.getChildCount();
+        if (childCount == 0) return;
+
+        TreePath parentPath = new TreePath(parent.getPath());
+        TreePath[] childPaths = new TreePath[childCount];
+        for (int i = 0; i < childCount; i++) {
+            childPaths[i] = parentPath.pathByAddingChild(parent.getChildAt(i));
+        }
+
+        tree.expandPath(parentPath);
+        tree.setSelectionPaths(childPaths);
+        tree.scrollPathToVisible(childPaths[childPaths.length - 1]);
+    }
 
     /**
      * 将 WzObject 插入到指定节点的末尾

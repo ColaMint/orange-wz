@@ -9,6 +9,7 @@ public final class WzFileMenu extends TreeMenu {
         super(editPane);
 
         add(btnSubNode);
+        add(btnSelectChildren);
         add(btnSave);
         add(btnSaveAs);
         add(btnUnload);

@@ -38,6 +38,7 @@ public class TreeMenu extends JPopupMenu {
     protected JMenuItem btnRawToIcon;
     protected JMenuItem btnChangeCavOrigin;
     protected JMenuItem btnCheckMapIntegrity;
+    protected JMenuItem btnSelectChildren;
 
     public TreeMenu(EditPane editPane) {
         super();
@@ -65,6 +66,9 @@ public class TreeMenu extends JPopupMenu {
 
         btnDelete = new JMenuItem(MainFrame.i18n.get("tree.menu.delete"), AiOutlineDelete);
         btnDelete.addActionListener(e -> editPane.delete());
+
+        btnSelectChildren = new JMenuItem(MainFrame.i18n.get("tree.menu.select_children"));
+        btnSelectChildren.addActionListener(e -> editPane.selectAllChildren());
 
         btnChangeKey = new JMenuItem(MainFrame.i18n.get("tree.menu.change_key"), AiOutlineKey);
         btnChangeKey.addActionListener(e -> editPane.changeKey());

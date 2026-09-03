@@ -9,6 +9,7 @@ public final class WzListPropertyMenu extends TreeMenu {
         super(editPane);
 
         add(btnSubNodeForList);
+        add(btnSelectChildren);
         add(btnCopy);
         add(btnPaste);
         add(btnDelete);

@@ -32,6 +32,7 @@ public final class WzFolderMenu extends TreeMenu {
         btnPackage.addActionListener(e -> packageBtnAction());
 
         add(btnSave);
+        add(btnSelectChildren);
         add(btnPackage);
         add(btnUnload);
         add(btnReload);
